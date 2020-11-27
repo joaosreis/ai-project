@@ -1,0 +1,165 @@
+open Frontend
+open Abstract_syntax_tree
+
+type value = N_inf | P_inf | Int of Z.t
+
+type t = Interval of value * value | Empty
+
+let compare_value x y =
+  match (x, y) with
+  | N_inf, N_inf | P_inf, P_inf -> 0
+  | N_inf, _ | _, P_inf -> -1
+  | _, N_inf | P_inf, _ -> 1
+  | Int x, Int y -> compare x y
+
+let lt x y = compare_value x y < 0
+
+let le x y = compare_value x y <= 0
+
+let gt x y = compare_value x y > 0
+
+let ge x y = compare_value x y >= 0
+
+let eq x y = compare_value x y = 0
+
+let neq x y = compare_value x y <> 0
+
+let min_value x y = if compare_value x y > 0 then y else x
+
+let max_value x y = if compare_value x y < 0 then y else x
+
+let create x y = Interval (min_value x y, max_value x y)
+
+let top = (N_inf, P_inf)
+
+let bottom = Empty
+
+let const x = (Int x, Int x)
+
+let rand x y = if x > y then (Int x, Int y) else (Int y, Int x)
+
+let unary v = function
+  | AST_UNARY_PLUS -> v
+  | AST_UNARY_MINUS -> (
+      match v with
+      | Interval (x, y) -> (
+          match (x, y) with
+          | Int x, Int y -> Interval (Int Z.(neg y), Int Z.(neg x))
+          | N_inf, Int x -> Interval (Int Z.(neg x), P_inf)
+          | Int x, P_inf -> Interval (N_inf, Int Z.(neg x))
+          | N_inf, P_inf -> Interval (N_inf, P_inf)
+          | P_inf, _ | _, N_inf -> assert false)
+      | Empty -> Empty)
+
+let plus v_1 v_2 =
+  match (v_1, v_2) with
+  | P_inf, Int _ | Int _, P_inf | P_inf, P_inf -> P_inf
+  | N_inf, Int _ | Int _, N_inf | N_inf, N_inf -> N_inf
+  | Int x_1, Int x_2 -> Int Z.(x_1 + x_2)
+  | P_inf, N_inf | N_inf, P_inf -> assert false
+
+(* TODO: *)
+
+let minus v_1 v_2 =
+  match (v_1, v_2) with
+  | P_inf, Int _ | P_inf, N_inf | Int _, N_inf -> P_inf
+  | N_inf, Int _ | Int _, P_inf | N_inf, P_inf -> N_inf
+  | Int x_1, Int x_2 -> Int Z.(x_1 - x_2)
+  | P_inf, P_inf | N_inf, N_inf -> assert false
+
+(* TODO: *)
+
+let times v_1 v_2 =
+  match (v_1, v_2) with
+  | (N_inf, Int x | Int x, N_inf) when Z.(x > zero) -> N_inf
+  | (N_inf, Int x | Int x, N_inf) when Z.(x < zero) -> P_inf
+  | (P_inf, Int x | Int x, P_inf) when Z.(x < zero) -> N_inf
+  | (P_inf, Int x | Int x, P_inf) when Z.(x > zero) -> P_inf
+  | Int _, (N_inf | P_inf) | (N_inf | P_inf), Int _ (* When x = 0 *) ->
+      Int Z.zero
+  | N_inf, P_inf | P_inf, N_inf -> N_inf
+  | N_inf, N_inf | P_inf, P_inf -> P_inf
+  | Int x_1, Int x_2 -> Int Z.(x_1 * x_2)
+
+let rec binary v_1 v_2 op =
+  match (v_1, v_2) with
+  | Empty, _ | _, Empty -> Empty
+  | Interval (x_1, x_2), Interval (y_1, y_2) -> (
+      match op with
+      | AST_PLUS -> Interval (plus x_1 y_1, plus x_2 y_2)
+      | AST_MINUS -> Interval (minus x_1 y_2, minus x_2 y_1)
+      | AST_MULTIPLY ->
+          let x_1y_1 = plus x_1 y_1 in
+          let x_1y_2 = plus x_1 y_2 in
+          let x_2y_1 = plus x_2 y_1 in
+          let x_2y_2 = plus x_2 y_2 in
+          let min =
+            min_value x_1y_1 (min_value x_1y_2 (min_value x_2y_1 x_2y_2))
+          in
+          let max =
+            max_value x_1y_1 (max_value x_1y_2 (max_value x_2y_1 x_2y_2))
+          in
+          Interval (min, max)
+      | AST_DIVIDE ->
+          let v_2' =
+            if eq y_1 (Int Z.one) && eq y_2 (Int Z.zero) then
+              Interval (N_inf, Int Z.one)
+            else if eq y_2 (Int Z.zero) then Interval (N_inf, Int Z.zero)
+            else if eq y_2 (Int Z.one) && eq y_1 (Int Z.zero) then
+              Interval (Int Z.one, P_inf)
+            else if eq y_1 (Int Z.zero) then Interval (Int Z.zero, P_inf)
+            else if le y_1 (Int Z.zero) && ge y_2 (Int Z.zero) then
+              Interval (N_inf, P_inf)
+            else
+              let x = if eq y_2 (Int Z.one) then Int Z.one else Int Z.zero in
+              let y = if eq y_1 (Int Z.one) then Int Z.one else Int Z.zero in
+              Interval (x, y)
+          in
+          binary v_1 v_2' AST_MULTIPLY
+      | AST_MODULO -> assert false (* TODO: *))
+
+let join v_1 v_2 =
+  match (v_1, v_2) with
+  | Empty, x | x, Empty -> x
+  | Interval (a, b), Interval (c, d) -> Interval (min_value a c, max_value b d)
+
+let meet v_1 v_2 =
+  match (v_1, v_2) with
+  | Empty, _ | _, Empty -> Empty
+  | Interval (a, b), Interval (c, d) ->
+      let max_ac = max_value a c in
+      let min_bd = min_value b d in
+      if le max_ac min_bd then Interval (max_ac, min_bd) else Empty
+
+let widen v_1 v_2 =
+  match (v_1, v_2) with
+  | Empty, x | x, Empty -> x
+  | Interval (x_1, y_1), Interval (x_2, y_2) ->
+      if ge x_2 x_1 && le y_2 y_1 then Interval (x_1, y_1)
+      else if ge x_2 x_1 && gt y_2 y_1 then Interval (x_1, P_inf)
+      else if lt x_2 x_1 && le y_2 y_1 then Interval (N_inf, y_1)
+      else Interval (N_inf, P_inf)
+
+let subset v_1 v_2 =
+  match (v_1, v_2) with
+  | Empty, _ -> true
+  | _, Empty -> false
+  | Interval (x_1, y_1), Interval (x_2, y_2) -> ge x_1 x_2 && le y_1 y_2
+
+let is_bottom = function Empty -> true | Interval _ -> false
+
+let print out_c =
+  let open Printf in
+  let print_value out_c v =
+    let s =
+      match v with N_inf -> "-inf" | P_inf -> "+inf" | Int i -> Z.to_string i
+    in
+    fprintf out_c "%s" s
+  in
+  function
+  | Empty -> fprintf out_c "{}"
+  | Interval (x, y) -> fprintf out_c "[%a, %a]" print_value x print_value y
+
+  let () =
+  let manager = Box.manager_alloc () in
+  manager.Box.
