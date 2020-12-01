@@ -1,42 +1,24 @@
 open Frontend
 open Abstract_syntax_tree
+open Apron
 
 type value = N_inf | P_inf | Int of Z.t
 
-type t = Interval of value * value | Empty
+type t = Box.t
 
-let compare_value x y =
-  match (x, y) with
-  | N_inf, N_inf | P_inf, P_inf -> 0
-  | N_inf, _ | _, P_inf -> -1
-  | _, N_inf | P_inf, _ -> 1
-  | Int x, Int y -> compare x y
+let top = Box.
 
-let lt x y = compare_value x y < 0
+let bottom = Interval.bottom
 
-let le x y = compare_value x y <= 0
+let const x =
+  let x' = Z.to_float x in
+  Interval.of_float x' x'
 
-let gt x y = compare_value x y > 0
 
-let ge x y = compare_value x y >= 0
-
-let eq x y = compare_value x y = 0
-
-let neq x y = compare_value x y <> 0
-
-let min_value x y = if compare_value x y > 0 then y else x
-
-let max_value x y = if compare_value x y < 0 then y else x
-
-let create x y = Interval (min_value x y, max_value x y)
-
-let top = (N_inf, P_inf)
-
-let bottom = Empty
-
-let const x = (Int x, Int x)
-
-let rand x y = if x > y then (Int x, Int y) else (Int y, Int x)
+let rand x y =
+  let x' = Z.to_float x in
+  let y' = Z.to_float y in
+  Interval.of_float x' y'
 
 let unary v = function
   | AST_UNARY_PLUS -> v
@@ -162,4 +144,10 @@ let print out_c =
 
   let () =
   let manager = Box.manager_alloc () in
-  manager.Box.
+  let tab = Parser.texpr1expr_of_string
+  let create_interval =
+    Apron.Interval.of_int
+    
+
+  let interval = { inf: (Scalar.of_int 5) } in
+  

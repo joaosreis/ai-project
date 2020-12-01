@@ -1,3 +1,4 @@
 (library
  (name domains)
- (libraries frontend apron))
+ (libraries frontend apron apron.boxD apron.boxMPQ apron.boxMPFR apron.t1pD
+   apron.t1pMPFR apron.t1pMPQ camlidl gmp))

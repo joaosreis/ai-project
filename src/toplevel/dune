@@ -1,0 +1,5 @@
+(executable
+ (name mytoplevel)
+ (libraries compiler-libs.toplevel domains apron apron.boxD apron.boxMPQ
+   apron.boxMPFR apron.t1pD apron.t1pMPFR apron.t1pMPQ camlidl gmp)
+ (modes byte))
