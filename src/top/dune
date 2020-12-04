@@ -1,0 +1,5 @@
+(executable
+ (name utop)
+ (libraries utop domains apron apron.boxD camlidl)
+ (link_flags (-linkall))
+ (modes byte))
